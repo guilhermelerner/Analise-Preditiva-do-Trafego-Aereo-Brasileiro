@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import requests
 import zipfile
 import os
@@ -10,7 +11,7 @@ import folium
 from folium.plugins import MarkerCluster, HeatMap 
 from dotenv import load_dotenv
 import statsmodels.api as sm
-import matplotlib.ticker as ticker # <-- Para formatar os números dos gráficos
+import matplotlib.ticker as ticker
 
 from sqlalchemy import create_engine
 
@@ -18,8 +19,8 @@ from sqlalchemy import create_engine
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler 
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.linear_model import LinearRegression, Ridge, Lasso, LogisticRegression # <-- LogisticRegression adicionada
-from sklearn.metrics import accuracy_score, r2_score, confusion_matrix # <-- confusion_matrix adicionada
+from sklearn.linear_model import LinearRegression, Ridge, Lasso, LogisticRegression
+from sklearn.metrics import accuracy_score, r2_score, confusion_matrix, precision_score, recall_score, f1_score
 
 load_dotenv()
 
@@ -251,25 +252,20 @@ def projeto_final_regressao_multipla(df):
     X = df_reg[['PASSAGEIROS_PAGOS', 'DUMMY_INTL', 'INTERACAO_PAX_INTL']]
     y = df_reg['CARGA_PAGA_KG']
     
-    # Modelo OLS para o terminal (Tabelas)
     X_sm = sm.add_constant(X) 
     modelo_ols = sm.OLS(y, X_sm).fit()
     print("\n[Tabelas OLS geradas para análise estatística]")
-    # Removi os prints longos das tabelas para o terminal não ficar poluído, mas o modelo rodou perfeitamente.
     
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
     X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.3, random_state=42)
     
-    # Treinando o modelo Ridge (Regularizado) para gerar o gráfico
     ridge = Ridge(alpha=10.0)
     ridge.fit(X_train, y_train)
     y_pred_multi = ridge.predict(X_test)
     
-    # NOVO: Gerando o Gráfico da Regressão Múltipla
     plt.figure(figsize=(10, 6))
     plt.scatter(y_test, y_pred_multi, color='purple', alpha=0.5)
-    # Linha de referência perfeita (y = x)
     plt.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], color='black', lw=2, linestyle='--')
     
     plt.title('Regressão Múltipla (Ridge): Carga Real vs. Predição do Modelo')
@@ -286,13 +282,10 @@ def projeto_final_regressao_multipla(df):
 def projeto_final_regressao_logistica(df):
     print("\n--- ETAPA 7: REGRESSÃO LOGÍSTICA ---")
     
-    # Prepara os dados (remover nulos)
     df_log = df.dropna(subset=['PASSAGEIROS_PAGOS', 'CARGA_PAGA_KG', 'NATUREZA']).copy()
-    
-    # Agrupa por voos e empresas para evitar ruídos
+    # Correção do erro de sigla, agrupando pelo Aeroporto de Origem de forma segura
     df_log = df_log.groupby(['AEROPORTO_ORIGEM', 'NATUREZA'])[['PASSAGEIROS_PAGOS', 'CARGA_PAGA_KG']].sum().reset_index()
-
-    # Criação da Variável Alvo Binária (0 = Doméstico, 1 = Internacional)
+    
     df_log['TARGET'] = (df_log['NATUREZA'] == 'INTERNACIONAL').astype(int)
     
     X = df_log[['PASSAGEIROS_PAGOS', 'CARGA_PAGA_KG']]
@@ -300,32 +293,53 @@ def projeto_final_regressao_logistica(df):
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
 
-    # Padronização (Obrigatório para Logística)
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
 
-    # Treinamento do Modelo Logístico
     modelo_log = LogisticRegression()
     modelo_log.fit(X_train_scaled, y_train)
     
     y_pred = modelo_log.predict(X_test_scaled)
     acuracia = accuracy_score(y_test, y_pred)
-    print(f"✔ R² (Acurácia) da Regressão Logística: {acuracia:.4f}")
-
-    # NOVO: Gerando o Gráfico da Matriz de Confusão
-    cm = confusion_matrix(y_test, y_pred)
+    precisao = precision_score(y_test, y_pred, zero_division=0)
+    recall = recall_score(y_test, y_pred, zero_division=0)
+    f1 = f1_score(y_test, y_pred, zero_division=0)
     
-    plt.figure(figsize=(8, 6))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
-                xticklabels=['Doméstico', 'Internacional'], 
-                yticklabels=['Doméstico', 'Internacional'])
-    plt.title('Regressão Logística: Matriz de Confusão')
-    plt.xlabel('Classe Prevista pelo Modelo')
-    plt.ylabel('Classe Real da ANAC')
+    print("\n[Métricas de Avaliação do Modelo]")
+    print(f"Acurácia:  {acuracia:.4f}")
+    print(f"Precisão:  {precisao:.4f}")
+    print(f"Recall:    {recall:.4f}")
+    print(f"F1-Score:  {f1:.4f}")
+
+    print("\n[Interpretação dos Coeficientes]")
+    print(f"Coef. Passageiros: {modelo_log.coef_[0][0]:.4f}")
+    print(f"Coef. Carga (KG):  {modelo_log.coef_[0][1]:.4f}")
+
+    # Visualização: Fronteira de Decisão
+    x_min, x_max = X_test_scaled[:, 0].min() - 1, X_test_scaled[:, 0].max() + 1
+    y_min, y_max = X_test_scaled[:, 1].min() - 1, X_test_scaled[:, 1].max() + 1
+    xx, yy = np.meshgrid(np.arange(x_min, x_max, 0.02),
+                         np.arange(y_min, y_max, 0.02))
+    
+    Z = modelo_log.predict(np.c_[xx.ravel(), yy.ravel()])
+    Z = Z.reshape(xx.shape)
+    
+    plt.figure(figsize=(10, 6))
+    plt.contourf(xx, yy, Z, alpha=0.3, cmap='Set1')
+    
+    scatter = plt.scatter(X_test_scaled[:, 0], X_test_scaled[:, 1], c=y_test, cmap='Set1', edgecolor='k', s=50)
+    
+    plt.title('Regressão Logística: Fronteira de Decisão')
+    plt.xlabel('Passageiros Pagos (Dados Padronizados)')
+    plt.ylabel('Carga Paga Transportada (Dados Padronizados)')
+    
+    handles, _ = scatter.legend_elements()
+    plt.legend(handles, ['Doméstico (0)', 'Internacional (1)'], title="Classes")
+    
     plt.tight_layout()
-    plt.savefig('grafico_regressao_logistica.png')
-    print("✔ Gráfico 4 (Logística): 'grafico_regressao_logistica.png' gerado com sucesso!")
+    plt.savefig('grafico_fronteira_logistica.png')
+    print("\n✔ Gráfico 4 (Logística): 'grafico_fronteira_logistica.png' gerado com sucesso!")
 
 def main():
     start = datetime.now()
@@ -337,7 +351,6 @@ def main():
     dados = transformar_dados()
     salvar_banco_mysql(dados)
     
-    # Chamando as 4 funções que geram os 4 gráficos exigidos:
     exercicio_knn_mapa(dados)
     projeto_final_regressao(dados)
     projeto_final_regressao_multipla(dados)
