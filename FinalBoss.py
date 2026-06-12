@@ -20,7 +20,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler 
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.linear_model import LinearRegression, Ridge, Lasso, LogisticRegression
-from sklearn.metrics import accuracy_score, r2_score, confusion_matrix, precision_score, recall_score, f1_score
+# Importações atualizadas com as novas métricas de erro
+from sklearn.metrics import accuracy_score, r2_score, confusion_matrix, precision_score, recall_score, f1_score, mean_absolute_error, mean_squared_error
 
 load_dotenv()
 
@@ -186,7 +187,14 @@ def exercicio_knn_mapa(df):
     
     y_pred = knn.predict(X_test_scaled)
     acuracia = accuracy_score(y_test, y_pred)
-    print(f"✔ Modelo kNN treinado! Acurácia: {acuracia:.4f}")
+    
+    # --- NOVAS MÉTRICAS kNN ---
+    print("\n[Métricas de Avaliação - kNN (Gráfico 1)]")
+    print(f"Acurácia:  {acuracia:.4f}")
+    print(f"Precisão:  {precision_score(y_test, y_pred, zero_division=0):.4f}")
+    print(f"Recall:    {recall_score(y_test, y_pred, zero_division=0):.4f}")
+    print(f"F1-Score:  {f1_score(y_test, y_pred, zero_division=0):.4f}")
+    print("-----------------------------------------")
 
     mapa = folium.Map(location=[-15.7801, -47.9292], zoom_start=4, tiles='CartoDB Positron')
     heat_data = [[row['latitude_deg'], row['longitude_deg'], row['PASSAGEIROS_PAGOS']] for index, row in df_br.iterrows()]
@@ -224,8 +232,19 @@ def projeto_final_regressao(df):
     modelo = LinearRegression()
     modelo.fit(X, y)
     y_pred = modelo.predict(X)
+    
+    # --- NOVAS MÉTRICAS REGRESSÃO LINEAR ---
     r2 = r2_score(y, y_pred)
-    print(f"✔ R² da Regressão Simples: {r2:.4f}")
+    mae = mean_absolute_error(y, y_pred)
+    mse = mean_squared_error(y, y_pred)
+    rmse = np.sqrt(mse)
+
+    print("\n[Métricas de Avaliação - Regressão Simples (Gráfico 2)]")
+    print(f"R² (Explicação do modelo): {r2:.4f}")
+    print(f"MAE (Erro Absoluto Médio): {mae:,.2f} KG")
+    print(f"MSE (Erro Quadrático Médio): {mse:,.2f}")
+    print(f"RMSE (Raiz do Erro Quadrático): {rmse:,.2f} KG")
+    print("-------------------------------------------------------")
 
     plt.figure(figsize=(10, 6))
     plt.scatter(X, y, color='steelblue', alpha=0.7)
@@ -264,6 +283,19 @@ def projeto_final_regressao_multipla(df):
     ridge.fit(X_train, y_train)
     y_pred_multi = ridge.predict(X_test)
     
+    # --- NOVAS MÉTRICAS REGRESSÃO MÚLTIPLA (RIDGE) ---
+    r2_multi = r2_score(y_test, y_pred_multi)
+    mae_multi = mean_absolute_error(y_test, y_pred_multi)
+    mse_multi = mean_squared_error(y_test, y_pred_multi)
+    rmse_multi = np.sqrt(mse_multi)
+
+    print("\n[Métricas de Avaliação - Regressão Múltipla Ridge (Gráfico 3)]")
+    print(f"R² (Explicação do modelo): {r2_multi:.4f}")
+    print(f"MAE (Erro Absoluto Médio): {mae_multi:,.2f} KG")
+    print(f"MSE (Erro Quadrático Médio): {mse_multi:,.2f}")
+    print(f"RMSE (Raiz do Erro Quadrático): {rmse_multi:,.2f} KG")
+    print("--------------------------------------------------------------")
+    
     plt.figure(figsize=(10, 6))
     plt.scatter(y_test, y_pred_multi, color='purple', alpha=0.5)
     plt.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], color='black', lw=2, linestyle='--')
@@ -283,7 +315,6 @@ def projeto_final_regressao_logistica(df):
     print("\n--- ETAPA 7: REGRESSÃO LOGÍSTICA ---")
     
     df_log = df.dropna(subset=['PASSAGEIROS_PAGOS', 'CARGA_PAGA_KG', 'NATUREZA']).copy()
-    # Correção do erro de sigla, agrupando pelo Aeroporto de Origem de forma segura
     df_log = df_log.groupby(['AEROPORTO_ORIGEM', 'NATUREZA'])[['PASSAGEIROS_PAGOS', 'CARGA_PAGA_KG']].sum().reset_index()
     
     df_log['TARGET'] = (df_log['NATUREZA'] == 'INTERNACIONAL').astype(int)
@@ -306,7 +337,7 @@ def projeto_final_regressao_logistica(df):
     recall = recall_score(y_test, y_pred, zero_division=0)
     f1 = f1_score(y_test, y_pred, zero_division=0)
     
-    print("\n[Métricas de Avaliação do Modelo]")
+    print("\n[Métricas de Avaliação - Regressão Logística (Gráfico 4)]")
     print(f"Acurácia:  {acuracia:.4f}")
     print(f"Precisão:  {precisao:.4f}")
     print(f"Recall:    {recall:.4f}")
@@ -315,8 +346,8 @@ def projeto_final_regressao_logistica(df):
     print("\n[Interpretação dos Coeficientes]")
     print(f"Coef. Passageiros: {modelo_log.coef_[0][0]:.4f}")
     print(f"Coef. Carga (KG):  {modelo_log.coef_[0][1]:.4f}")
+    print("---------------------------------------------------------")
 
-    # Visualização: Fronteira de Decisão
     x_min, x_max = X_test_scaled[:, 0].min() - 1, X_test_scaled[:, 0].max() + 1
     y_min, y_max = X_test_scaled[:, 1].min() - 1, X_test_scaled[:, 1].max() + 1
     xx, yy = np.meshgrid(np.arange(x_min, x_max, 0.02),
